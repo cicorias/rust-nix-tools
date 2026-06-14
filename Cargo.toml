@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/portspy"]
+resolver = "2"

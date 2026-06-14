@@ -1,0 +1,16 @@
+[package]
+name = "portspy"
+version = "0.1.0"
+edition = "2021"
+description = "Deep inspection of what process is using a port"
+
+[[bin]]
+name = "portspy"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+sysinfo = "0.31"
+colored = "2"
+anyhow = "1"
+chrono = "0.4"

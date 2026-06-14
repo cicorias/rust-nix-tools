@@ -1,0 +1,30 @@
+[tools]
+rust = "1.96.0"
+
+[tasks.build]
+description = "Build all tools"
+run = "cargo build --workspace"
+
+[tasks.build-release]
+description = "Build all tools in release mode"
+run = "cargo build --workspace --release"
+
+[tasks.test]
+description = "Run all tests"
+run = "cargo test --workspace"
+
+[tasks.lint]
+description = "Clippy lint all crates"
+run = "cargo clippy --workspace -- -D warnings"
+
+[tasks.fmt]
+description = "Format all source"
+run = "cargo fmt --all"
+
+[tasks.fmt-check]
+description = "Check formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks.portspy]
+description = "Run portspy (pass -- <port> to specify a port)"
+run = "cargo run -p portspy --"
