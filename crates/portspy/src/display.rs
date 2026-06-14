@@ -1,4 +1,5 @@
 use crate::types::{Finding, ListEntry, Protocol, TcpState};
+use serde::Serialize;
 use colored::Colorize;
 use std::time::{Duration, SystemTime};
 
@@ -18,6 +19,14 @@ pub fn render(findings: &[Finding], verbose: bool) {
 
     for finding in findings {
         render_finding(finding, verbose);
+    }
+}
+
+/// Serialize any value to pretty-printed JSON on stdout.
+pub fn emit_json<T: Serialize>(value: &T) {
+    match serde_json::to_string_pretty(value) {
+        Ok(s) => println!("{}", s),
+        Err(e) => eprintln!("error serializing JSON: {}", e),
     }
 }
 

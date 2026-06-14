@@ -4,6 +4,7 @@
 /// a real OS environment and may need elevated privileges for certain ports.
 use std::net::TcpListener;
 use std::process::Command;
+use serde_json;
 
 fn portspy_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_portspy"))
@@ -124,6 +125,76 @@ fn list_mode_includes_self_bound_port() {
         stdout.contains(&port.to_string()),
         "ephemeral port {port} not found in list:\n{stdout}"
     );
+}
+
+#[test]
+fn json_flag_list_mode_is_valid_json() {
+    let output = portspy_bin().arg("--json").output().expect("failed to run portspy");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("--json output is not valid JSON");
+    assert!(parsed.is_array(), "expected JSON array, got: {parsed}");
+}
+
+#[test]
+fn json_flag_list_mode_has_expected_fields() {
+    let output = portspy_bin().arg("--json").output().expect("failed to run portspy");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let arr: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    if let Some(first) = arr.as_array().and_then(|a| a.first()) {
+        assert!(first.get("port").is_some(), "missing 'port' field");
+        assert!(first.get("protocol").is_some(), "missing 'protocol' field");
+        assert!(first.get("pid").is_some(), "missing 'pid' field");
+        assert!(first.get("process_name").is_some(), "missing 'process_name' field");
+    }
+}
+
+#[test]
+fn json_flag_inspect_mode_is_valid_json() {
+    let (_listener, port) = bind_ephemeral();
+    let output = portspy_bin()
+        .args([&port.to_string(), "--json"])
+        .output()
+        .expect("failed to run portspy");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("--json output is not valid JSON");
+    assert!(parsed.is_array());
+    let first = &parsed.as_array().unwrap()[0];
+    assert!(first.get("socket").is_some(), "missing 'socket' field");
+    assert!(first.get("process").is_some(), "missing 'process' field");
+    assert_eq!(
+        first["socket"]["local_port"].as_u64().unwrap(),
+        u64::from(port)
+    );
+}
+
+#[test]
+fn json_inspect_has_process_fields() {
+    let (_listener, port) = bind_ephemeral();
+    let output = portspy_bin()
+        .args([&port.to_string(), "--json"])
+        .output()
+        .expect("failed to run portspy");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let arr: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let proc = &arr[0]["process"];
+    assert!(proc.get("pid").is_some());
+    assert!(proc.get("name").is_some());
+    assert!(proc.get("cmdline").is_some());
+    assert!(proc.get("user").is_some());
+    assert!(proc.get("memory_bytes").is_some());
+}
+
+#[test]
+fn kill_flag_requires_port() {
+    let output = portspy_bin().arg("--kill").output().expect("failed to run portspy");
+    assert!(!output.status.success(), "should exit non-zero without a port");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--kill requires"), "unexpected stderr: {stderr}");
 }
 
 #[test]

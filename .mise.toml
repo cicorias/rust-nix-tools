@@ -1,4 +1,5 @@
 [tools]
+jq = "latest"
 rust = "1.96.0"
 
 [tasks.build]

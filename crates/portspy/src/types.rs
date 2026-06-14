@@ -1,4 +1,5 @@
 use std::fmt;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protocol {
@@ -18,6 +19,12 @@ impl fmt::Display for Protocol {
             Protocol::Udp6 => write!(f, "UDP6"),
             Protocol::Unknown(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl Serialize for Protocol {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.to_string())
     }
 }
 
@@ -53,6 +60,12 @@ impl fmt::Display for TcpState {
             TcpState::Closing => write!(f, "CLOSING"),
             TcpState::Unknown(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl Serialize for TcpState {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.to_string())
     }
 }
 
@@ -94,7 +107,7 @@ impl TcpState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SocketInfo {
     pub protocol: Protocol,
     pub local_addr: String,
@@ -102,11 +115,12 @@ pub struct SocketInfo {
     pub remote_addr: Option<String>,
     pub remote_port: Option<u16>,
     pub state: Option<TcpState>,
+    #[serde(skip)]
     #[allow(dead_code)]
     pub fd: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
@@ -122,7 +136,7 @@ pub struct ProcessInfo {
     pub exe: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Finding {
     pub socket: SocketInfo,
     pub process: ProcessInfo,
@@ -130,7 +144,7 @@ pub struct Finding {
 
 /// Lightweight entry used by the list view — populated directly from lsof/proc
 /// without the full sysinfo enrichment pass.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ListEntry {
     pub port: u16,
     pub protocol: Protocol,
