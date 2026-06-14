@@ -27,80 +27,56 @@ pub fn render_list(entries: &[ListEntry]) {
         return;
     }
 
-    // Build the ADDR column as "local_addr:port"
-    let addr_strs: Vec<String> = entries
-        .iter()
-        .map(|e| format!("{}:{}", e.local_addr, e.port))
-        .collect();
+    // Fixed-width columns
+    const PORT_W: usize = 5;
+    const BIND_W: usize = 16; // normalized bind addr, truncated
+    const PROTO_W: usize = 5;
+    const STATE_W: usize = 12;
+    const PID_W: usize = 7;
 
-    let addr_width = addr_strs.iter().map(|s| s.len()).max().unwrap_or(4).max(4);
-    let name_width = entries.iter().map(|e| e.process_name.len()).max().unwrap_or(7).max(7);
-    let user_width = entries.iter().map(|e| e.user.len()).max().unwrap_or(4).max(4);
+    // Dynamic columns — derive from data
+    let name_w = entries.iter().map(|e| e.process_name.len()).max().unwrap_or(7).max(7);
+    let user_w = entries.iter().map(|e| e.user.len()).max().unwrap_or(4).max(4);
 
-    // sep width = addr + 2 + proto(5) + 2 + state(11) + 2 + name + 2 + user + 2 + pid(7)
-    let sep = "─".repeat(addr_width + 2 + 5 + 2 + 11 + 2 + name_width + 2 + user_width + 2 + 7);
+    let total = PORT_W + 2 + BIND_W + 2 + PROTO_W + 2 + STATE_W + 2 + name_w + 2 + user_w + 2 + PID_W;
+    let sep = "─".repeat(total);
 
     println!("\n  {}", "portspy — listening ports".bold().white());
     println!("  {}", sep.dimmed());
+
+    // Header: pre-pad plain strings, then color — avoids ANSI-byte padding bug
     println!(
-        "  {:<addr_width$}  {:<5}  {:<11}  {:<name_width$}  {:<user_width$}  {:>7}",
-        "ADDR".bold().dimmed(),
-        "PROTO".bold().dimmed(),
-        "STATE".bold().dimmed(),
-        "PROCESS".bold().dimmed(),
-        "USER".bold().dimmed(),
-        "PID".bold().dimmed(),
-        addr_width = addr_width,
-        name_width = name_width,
-        user_width = user_width,
+        "  {}  {}  {}  {}  {}  {}  {}",
+        col_r(PORT_W, "PORT").bold().dimmed(),
+        col_l(BIND_W, "BIND").bold().dimmed(),
+        col_l(PROTO_W, "PROTO").bold().dimmed(),
+        col_l(STATE_W, "STATE").bold().dimmed(),
+        col_l(name_w, "PROCESS").bold().dimmed(),
+        col_l(user_w, "USER").bold().dimmed(),
+        col_r(PID_W, "PID").bold().dimmed(),
     );
     println!("  {}", sep.dimmed());
 
-    for (e, addr_str) in entries.iter().zip(addr_strs.iter()) {
-        let proto_str = e.protocol.to_string();
-        let proto_col = match e.protocol {
-            Protocol::Tcp | Protocol::Tcp6 => proto_str.cyan().to_string(),
-            Protocol::Udp | Protocol::Udp6 => proto_str.magenta().to_string(),
-            Protocol::Unknown(_) => proto_str.dimmed().to_string(),
-        };
+    for e in entries {
+        let bind = normalize_addr(&e.local_addr);
+        let bind = trunc(&bind, BIND_W);
+        let state_plain = e.state.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "—".into());
+        let name = trunc(&e.process_name, name_w);
 
-        let state_col = match &e.state {
-            Some(s) => {
-                let t = s.to_string();
-                match s {
-                    TcpState::Listen => t.green().to_string(),
-                    TcpState::Established => t.bright_green().to_string(),
-                    TcpState::TimeWait | TcpState::FinWait1 | TcpState::FinWait2 => {
-                        t.yellow().to_string()
-                    }
-                    _ => t.dimmed().to_string(),
-                }
-            }
-            None => "—".dimmed().to_string(),
-        };
+        // Pre-pad to column width as plain text, then apply color
+        let port_col  = col_r(PORT_W,  &e.port.to_string()).yellow().bold().to_string();
+        let bind_col  = col_l(BIND_W,  &bind).dimmed().to_string();
+        let proto_col = color_proto(col_l(PROTO_W, &e.protocol.to_string()), &e.protocol);
+        let state_col = color_state(col_l(STATE_W, &state_plain), &e.state);
+        let name_col  = col_l(name_w,  &name).white().to_string();
+        let user_col  = col_l(user_w,  &e.user).dimmed().to_string();
+        let pid_col   = col_r(PID_W,   &e.pid.to_string()).dimmed().to_string();
 
-        let name_col = if e.process_name.is_empty() {
-            "<unknown>".dimmed().to_string()
-        } else {
-            e.process_name.white().to_string()
-        };
-
-        println!(
-            "  {:<addr_width$}  {:<5}  {:<11}  {:<name_width$}  {:<user_width$}  {:>7}",
-            addr_str.yellow().to_string(),
-            proto_col,
-            state_col,
-            name_col,
-            e.user.dimmed().to_string(),
-            e.pid.to_string().dimmed(),
-            addr_width = addr_width,
-            name_width = name_width,
-            user_width = user_width,
-        );
+        println!("  {}  {}  {}  {}  {}  {}  {}",
+            port_col, bind_col, proto_col, state_col, name_col, user_col, pid_col);
     }
 
     println!("  {}", sep.dimmed());
-
     let unique_ports: std::collections::HashSet<u16> = entries.iter().map(|e| e.port).collect();
     let unique_procs: std::collections::HashSet<u32> = entries.iter().map(|e| e.pid).collect();
     println!(
@@ -108,6 +84,59 @@ pub fn render_list(entries: &[ListEntry]) {
         unique_ports.len().to_string().bold(),
         unique_procs.len().to_string().bold(),
     );
+}
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
+
+/// Left-pad a plain string to `w` chars — do this BEFORE applying color.
+fn col_l(w: usize, s: &str) -> String {
+    format!("{:<w$}", s, w = w)
+}
+
+/// Right-pad a plain string to `w` chars — do this BEFORE applying color.
+fn col_r(w: usize, s: &str) -> String {
+    format!("{:>w$}", s, w = w)
+}
+
+/// Truncate to `max` visible chars, appending `~` if cut.
+fn trunc(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}~", &s[..max.saturating_sub(1)])
+    }
+}
+
+/// Normalize wildcard/loopback addresses for compact display.
+fn normalize_addr(addr: &str) -> String {
+    match addr {
+        "0.0.0.0" | "::" | "[::]" => "*".to_string(),
+        "127.0.0.1" => "localhost".to_string(),
+        "::1" | "[::1]" => "localhost6".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn color_proto(padded: String, proto: &Protocol) -> String {
+    match proto {
+        Protocol::Tcp | Protocol::Tcp6 => padded.cyan().to_string(),
+        Protocol::Udp | Protocol::Udp6 => padded.magenta().to_string(),
+        Protocol::Unknown(_) => padded.dimmed().to_string(),
+    }
+}
+
+fn color_state(padded: String, state: &Option<TcpState>) -> String {
+    match state {
+        Some(TcpState::Listen) => padded.green().to_string(),
+        Some(TcpState::Established) => padded.bright_green().to_string(),
+        Some(TcpState::TimeWait) | Some(TcpState::FinWait1) | Some(TcpState::FinWait2) => {
+            padded.yellow().to_string()
+        }
+        Some(TcpState::CloseWait) | Some(TcpState::LastAck) | Some(TcpState::Closing) => {
+            padded.red().to_string()
+        }
+        _ => padded.dimmed().to_string(),
+    }
 }
 
 fn render_finding(f: &Finding, verbose: bool) {

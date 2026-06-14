@@ -105,7 +105,8 @@ fn list_mode_shows_headers() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // If there are any ports (very likely), check column headers appear
     if !stdout.contains("No listening ports") {
-        assert!(stdout.contains("ADDR"), "missing ADDR header:\n{stdout}");
+        assert!(stdout.contains("PORT"), "missing PORT header:\n{stdout}");
+        assert!(stdout.contains("BIND"), "missing BIND header:\n{stdout}");
         assert!(stdout.contains("PROTO"), "missing PROTO header:\n{stdout}");
         assert!(stdout.contains("PROCESS"), "missing PROCESS header:\n{stdout}");
     }
